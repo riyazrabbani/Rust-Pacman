@@ -1,3 +1,4 @@
+//ggez for GUI
 use ggez::{Context, ContextBuilder, GameResult};
 use ggez::event::{self, EventHandler};
 use ggez::graphics::{self, Color, DrawParam};
@@ -6,18 +7,19 @@ use ggez::timer;
 use std::time::Instant;
 use rand::Rng;
 
+//constants for sizes, movement speeds, and durations
 const CELL_SIZE: f32 = 30.0;
 const PACMAN_SIZE: f32 = 25.0;
 const DOT_SIZE: f32 = 6.0;
 const GHOST_SIZE: f32 = 25.0;
 const MOVEMENT_SPEED: f32 = 1.0;
-const GHOST_SPEED: f32 = 0.5;     // Slower ghost speed
+const GHOST_SPEED: f32 = 0.5;     
 const THIN_WALL_SIZE: f32 = 30.0;
 const POWER_PELLET_SIZE: f32 = 15.0;
-const POWER_PELLET_DURATION: f32 = 5.0;  // 5 seconds
-const VULNERABLE_GHOST_SPEED: f32 = 0.5;  // Slower speed when blue
+const POWER_PELLET_DURATION: f32 = 5.0; 
+const VULNERABLE_GHOST_SPEED: f32 = 0.5;  
 
-// Improved map with more pathways and proper spacing
+//W's represent walls, dots represent pellets. G represents Ghosts
 const MAP_STR: [&'static str; 20] = [
     "WWWWWWWWWWWWWWWWWWWW",
     "W........W.........W",
@@ -28,7 +30,7 @@ const MAP_STR: [&'static str; 20] = [
     "WWWW.WWW.W.WWW.WWWWW",
     "   W.W.......W.W   W",
     "WWWW.W.WW WW.W.WWWWW",
-    "W....... GGG ......W",
+    "W....... GG ......W",
     "WWWW.W.WWWWW.W.WWWWW",
     "   W.W.......W.....W",
     "WWWW.W.WWWWW.W.WWWWW",
@@ -41,6 +43,7 @@ const MAP_STR: [&'static str; 20] = [
     "WWWWWWWWWWWWWWWWWWWW",
 ];
 
+//derive clone, copy, and equality from direction
 #[derive(Clone, Copy, PartialEq)]
 enum Direction {
     Up,
@@ -50,6 +53,7 @@ enum Direction {
     None,
 }
 
+//position arguments, directions, colors, and timers
 #[derive(Clone)]
 struct Ghost {
     x: f32,
@@ -65,6 +69,7 @@ struct Ghost {
 }
 
 impl Ghost {
+    //ghost struct with following values
     fn new(x: f32, y: f32, color: Color) -> Self {
         Ghost {
             x,
@@ -80,10 +85,11 @@ impl Ghost {
         }
     }
 
+    //for updating the graphics
     fn update(&mut self, walls: &[graphics::Rect], pacman_x: f32, pacman_y: f32) {
         let mut rng = rand::thread_rng();
         
-        // Update confused timer behavior
+        //Confused timer to introduce a bit of rng here. Prevents ghosts from streamlining to you
         if self.confused_timer > 0.0 {
             if rng.gen_bool(0.1) {
                 self.target_x = rng.gen_range(0.0..600.0);
@@ -101,11 +107,11 @@ impl Ghost {
             }
         }
 
-        // Calculate direction to target
+        //Calculate direction to target
         let _dx = self.target_x - self.x;
         let _dy = self.target_y - self.y;
         
-        // Choose direction based on target position and available paths
+        //Choose direction based on target position and available paths
         let possible_directions = vec![Direction::Up, Direction::Down, Direction::Left, Direction::Right];
         let mut valid_directions = Vec::new();
 
@@ -116,6 +122,7 @@ impl Ghost {
                 GHOST_SPEED
             };
 
+            //potential direction
             let (test_dx, test_dy) = match dir {
                 Direction::Up => (0.0, -speed),
                 Direction::Down => (0.0, speed),
@@ -124,19 +131,21 @@ impl Ghost {
                 Direction::None => (0.0, 0.0),
             };
 
+            //ghost cage
             let ghost_rect = graphics::Rect::new(
                 self.x + test_dx,
                 self.y + test_dy,
                 GHOST_SIZE,
                 GHOST_SIZE,
             );
-
+            
+            //pushing direction based on wall
             if !walls.iter().any(|wall| wall.overlaps(&ghost_rect)) {
                 valid_directions.push(dir);
             }
         }
 
-        // Update direction selection based on confused state
+        //Update direction selection based on confused state
         if !valid_directions.is_empty() {
             let preferred_direction = if self.confused_timer > 0.0 {
                 valid_directions[rng.gen_range(0..valid_directions.len())]
@@ -158,7 +167,7 @@ impl Ghost {
             self.direction = preferred_direction;
         }
 
-        // Move ghost with GHOST_SPEED
+        //move ghost with GHOST_SPEED
         let (dx, dy) = match self.direction {
             Direction::Up => (0.0, -GHOST_SPEED),
             Direction::Down => (0.0, GHOST_SPEED),
@@ -177,16 +186,18 @@ impl Ghost {
         }
     }
 
+    //for resetting ghosts after eating them
     fn reset_position(&mut self) {
         self.x = self.spawn_position.0;
         self.y = self.spawn_position.1;
         self.is_vulnerable = false;
         self.respawn_timer = 0.0;
         self.direction = Direction::Left;
-        self.confused_timer = 3.0;  // Set confused timer when respawning
+        self.confused_timer = 3.0;  
     }
 }
 
+//state of the game
 struct MainState {
     pacman_x: f32,
     pacman_y: f32,
@@ -200,7 +211,7 @@ struct MainState {
     animation_start: Instant,
     mouth_open: bool,
     game_over: bool,
-    show_menu: bool,  // New field for game over menu
+    show_menu: bool,
     power_pellets: Vec<ggez::mint::Point2<f32>>,
     power_pellet_active: bool,
     power_pellet_timer: f32,
@@ -215,27 +226,28 @@ impl MainState {
         let mut pacman_start_x = 0.0;
         let mut pacman_start_y = 0.0;
 
-        // Find center position for ghost spawn
+        //find center position for ghost spawn
         let center_x = (MAP_STR[0].len() as f32 / 2.0).floor() * CELL_SIZE;
         let center_y = (MAP_STR.len() as f32 / 2.0).floor() * CELL_SIZE;
 
-        // Add power pellets in corners
+        //add 'power' pellets in corners
         power_pellets.push(ggez::mint::Point2 { x: CELL_SIZE * 1.5, y: CELL_SIZE * 1.5 });
         power_pellets.push(ggez::mint::Point2 { x: CELL_SIZE * (MAP_STR[0].len() as f32 - 1.5), y: CELL_SIZE * 1.5 });
         power_pellets.push(ggez::mint::Point2 { x: CELL_SIZE * 1.5, y: CELL_SIZE * (MAP_STR.len() as f32 - 1.5) });
         power_pellets.push(ggez::mint::Point2 { x: CELL_SIZE * (MAP_STR[0].len() as f32 - 1.5), y: CELL_SIZE * (MAP_STR.len() as f32 - 1.5) });
 
-        // Initialize ghosts in center
+        //initialize ghosts in center
         ghosts.push(Ghost::new(center_x, center_y, Color::RED));
         ghosts.push(Ghost::new(center_x, center_y, Color::CYAN));
         ghosts.push(Ghost::new(center_x, center_y, Color::MAGENTA));
 
-        // Parse map and create game objects
+        //parse map and create game objects
         for (y, row) in MAP_STR.iter().enumerate() {
             for (x, cell) in row.chars().enumerate() {
                 let pos_x = x as f32 * CELL_SIZE;
                 let pos_y = y as f32 * CELL_SIZE;
 
+                //walls based on given map above.
                 match cell {
                     'W' => walls.push(graphics::Rect::new(
                         pos_x,
@@ -264,7 +276,7 @@ impl MainState {
                 }
             }
         }
-
+        //if ok, set default values for main state
         Ok(MainState {
             pacman_x: pacman_start_x,
             pacman_y: pacman_start_y,
@@ -284,8 +296,9 @@ impl MainState {
             power_pellet_timer: 0.0,
         })
     }
+    //reset game by enumerating over x and y and resetting particles
     fn reset_game(&mut self) {
-        // Reset Pacman position
+        //reset Pacman position
         for (y, row) in MAP_STR.iter().enumerate() {
             for (x, cell) in row.chars().enumerate() {
                 if cell == 'P' {
@@ -296,7 +309,7 @@ impl MainState {
             }
         }
 
-        // Store ghost spawn positions
+        //store ghost spawn positions
         let mut ghost_spawn_positions = Vec::new();
         for (y, row) in MAP_STR.iter().enumerate() {
             for (x, cell) in row.chars().enumerate() {
@@ -309,7 +322,7 @@ impl MainState {
             }
         }
 
-        // Reset ghosts
+        //reset ghosts by repushing them in their spawn position
         self.ghosts.clear();
         if !ghost_spawn_positions.is_empty() {
             let pos = ghost_spawn_positions[0];
@@ -317,20 +330,20 @@ impl MainState {
             self.ghosts.push(Ghost::new(pos.0, pos.1, Color::CYAN));
             self.ghosts.push(Ghost::new(pos.0, pos.1, Color::MAGENTA));
             
-            // Store spawn positions for each ghost
+            //store spawn positions for each ghost
             for ghost in &mut self.ghosts {
                 ghost.spawn_position = pos;
             }
         }
 
-        // Reset power pellets
+        //reset power pellets
         self.power_pellets.clear();
         self.power_pellets.push(ggez::mint::Point2 { x: CELL_SIZE * 1.5, y: CELL_SIZE * 1.5 });
         self.power_pellets.push(ggez::mint::Point2 { x: CELL_SIZE * (MAP_STR[0].len() as f32 - 1.5), y: CELL_SIZE * 1.5 });
         self.power_pellets.push(ggez::mint::Point2 { x: CELL_SIZE * 1.5, y: CELL_SIZE * (MAP_STR.len() as f32 - 1.5) });
         self.power_pellets.push(ggez::mint::Point2 { x: CELL_SIZE * (MAP_STR[0].len() as f32 - 1.5), y: CELL_SIZE * (MAP_STR.len() as f32 - 1.5) });
 
-        // Reset game state
+        //reset game state
         self.score = 0;
         self.lives = 3;
         self.game_over = false;
@@ -340,7 +353,7 @@ impl MainState {
         self.power_pellet_active = false;
         self.power_pellet_timer = 0.0;
         
-        // Recreate dots
+        //recreate dots
         self.dots.clear();
         for (y, row) in MAP_STR.iter().enumerate() {
             for (x, cell) in row.chars().enumerate() {
@@ -354,6 +367,7 @@ impl MainState {
         }
     }
 
+    //possibility for movement depends on the cell grid they 'snap' to
     fn can_move(&self, direction: Direction) -> bool {
         let (dx, dy) = match direction {
             Direction::Up => (0.0, -CELL_SIZE),
@@ -363,6 +377,7 @@ impl MainState {
             Direction::None => (0.0, 0.0),
         };
 
+        //'snap' pacman to a grid cell to allow for smoother grid tracing
         let test_x = (self.pacman_x / CELL_SIZE).round() * CELL_SIZE + dx + (CELL_SIZE - PACMAN_SIZE) / 2.0;
         let test_y = (self.pacman_y / CELL_SIZE).round() * CELL_SIZE + dy + (CELL_SIZE - PACMAN_SIZE) / 2.0;
         
@@ -370,6 +385,7 @@ impl MainState {
         !self.walls.iter().any(|wall| wall.overlaps(&pacman_rect))
     }
 
+    //life counter
     fn check_ghost_collision(&mut self) {
         if self.lives <= 0 {
             return;
@@ -399,9 +415,10 @@ impl MainState {
                         if self.lives <= 0 {
                             self.game_over = true;
                             self.show_menu = true;
+                            self.lives = 0;
                             return;
                         }
-                        // Reset positions
+                        //reset positions
                         self.reset_pacman_position();
                         for ghost in &mut self.ghosts {
                             ghost.reset_position();
@@ -413,8 +430,9 @@ impl MainState {
         }
     }
 
+    //function to make pacman an entity of the current cell it resides in. Allows for easier movement without getting stuck on edges
     fn snap_to_grid(&mut self) {
-        // Round to nearest grid position
+        //round to nearest grid position
         self.pacman_x = (self.pacman_x / CELL_SIZE).round() * CELL_SIZE + (CELL_SIZE - PACMAN_SIZE) / 2.0;
         self.pacman_y = (self.pacman_y / CELL_SIZE).round() * CELL_SIZE + (CELL_SIZE - PACMAN_SIZE) / 2.0;
     }
@@ -429,8 +447,9 @@ impl MainState {
         (self.pacman_x - center_x).abs() < 1.0 && (self.pacman_y - center_y).abs() < 1.0
     }
 
+    //resetting position and directions
     fn reset_pacman_position(&mut self) {
-        // Find and reset Pacman's position from the map
+        //find and reset Pacman's position from the map
         for (y, row) in MAP_STR.iter().enumerate() {
             for (x, cell) in row.chars().enumerate() {
                 if cell == 'P' {
@@ -450,7 +469,7 @@ impl EventHandler<ggez::GameError> for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         let dt = timer::delta(ctx).as_secs_f32();
 
-        // Update power pellet timer
+        //update power pellet timer
         if self.power_pellet_active {
             self.power_pellet_timer -= dt;
             if self.power_pellet_timer <= 0.0 {
@@ -461,7 +480,7 @@ impl EventHandler<ggez::GameError> for MainState {
             }
         }
 
-        // Update ghost timers
+        //update ghost timers
         for ghost in &mut self.ghosts {
             if ghost.confused_timer > 0.0 {
                 ghost.confused_timer -= dt;
@@ -471,7 +490,7 @@ impl EventHandler<ggez::GameError> for MainState {
             }
         }
 
-        // Check power pellet collection
+        //check power pellet collection
         self.power_pellets.retain(|&pellet| {
             let distance = ((self.pacman_x + PACMAN_SIZE / 2.0 - pellet.x).powi(2) +
                           (self.pacman_y + PACMAN_SIZE / 2.0 - pellet.y).powi(2)).sqrt();
@@ -487,7 +506,7 @@ impl EventHandler<ggez::GameError> for MainState {
             }
         });
 
-        // Check ghost collisions
+        //check ghost collisions
         for ghost in &mut self.ghosts {
             if ghost.respawn_timer <= 0.0 {
                 let distance = ((self.pacman_x + PACMAN_SIZE / 2.0 - ghost.x - GHOST_SIZE / 2.0).powi(2) +
@@ -512,20 +531,20 @@ impl EventHandler<ggez::GameError> for MainState {
             return Ok(());
         }
 
-        // Update mouth animation
+        //update mouth animation
         if self.animation_start.elapsed().as_millis() > 200 {
             self.mouth_open = !self.mouth_open;
             self.animation_start = Instant::now();
         }
 
-        // If at grid center, allow direction change if the new direction is valid
+        //if at grid center, allow direction change if the new direction is valid
         if self.is_at_grid_center() {
             if self.can_move(self.requested_direction) {
                 self.current_direction = self.requested_direction;
             }
         }
 
-        // Move in current direction
+        //move in current direction
         let (dx, dy) = match self.current_direction {
             Direction::Up => (0.0, -MOVEMENT_SPEED),
             Direction::Down => (0.0, MOVEMENT_SPEED),
@@ -534,6 +553,7 @@ impl EventHandler<ggez::GameError> for MainState {
             Direction::None => (0.0, 0.0),
         };
 
+        //update movement
         let new_x = self.pacman_x + dx;
         let new_y = self.pacman_y + dy;
         let pacman_rect = graphics::Rect::new(new_x, new_y, PACMAN_SIZE, PACMAN_SIZE);
@@ -542,20 +562,20 @@ impl EventHandler<ggez::GameError> for MainState {
             self.pacman_x = new_x;
             self.pacman_y = new_y;
         } else {
-            // If we hit a wall, snap to grid
+            //if we hit a wall, snap to grid
             self.snap_to_grid();
             self.current_direction = Direction::None;
         }
 
-        // Update ghosts with Pac-Man's position
+        //update ghosts with Pac-Man's position
         for ghost in &mut self.ghosts {
             ghost.update(&self.walls, self.pacman_x, self.pacman_y);
         }
 
-        // Check collisions
+        //check collisions
         self.check_ghost_collision();
 
-        // Collect dots
+        //collect dots
         self.dots.retain(|&dot| {
             let distance = ((self.pacman_x + PACMAN_SIZE / 2.0 - dot.x).powi(2) +
                              (self.pacman_y + PACMAN_SIZE / 2.0 - dot.y).powi(2)).sqrt();
@@ -573,7 +593,7 @@ impl EventHandler<ggez::GameError> for MainState {
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         graphics::clear(ctx, Color::BLACK);
 
-        // Draw walls
+        //draw walls
         for wall in &self.walls {
             let wall_mesh = graphics::Mesh::new_rectangle(
                 ctx,
@@ -584,7 +604,7 @@ impl EventHandler<ggez::GameError> for MainState {
             graphics::draw(ctx, &wall_mesh, DrawParam::default())?;
         }
 
-        // Draw dots
+        //draw dots
         for dot in &self.dots {
             let dot_mesh = graphics::Mesh::new_circle(
                 ctx,
@@ -597,7 +617,7 @@ impl EventHandler<ggez::GameError> for MainState {
             graphics::draw(ctx, &dot_mesh, DrawParam::default())?;
         }
 
-        // Draw Pac-Man
+        //draw Pac-Man
         let pacman_mesh = graphics::Mesh::new_circle(
             ctx,
             graphics::DrawMode::fill(),
@@ -611,7 +631,7 @@ impl EventHandler<ggez::GameError> for MainState {
         )?;
         graphics::draw(ctx, &pacman_mesh, DrawParam::default())?;
 
-        // Draw ghosts
+        //draw ghosts
         for ghost in &self.ghosts {
             if ghost.respawn_timer <= 0.0 {
                 let color = if ghost.is_vulnerable {
@@ -635,7 +655,7 @@ impl EventHandler<ggez::GameError> for MainState {
             }
         }
 
-        // Draw score
+        //draw score
         let score_text = graphics::Text::new(format!("Score: {}", self.score));
         graphics::draw(
             ctx,
@@ -645,7 +665,7 @@ impl EventHandler<ggez::GameError> for MainState {
                 .color(Color::WHITE),
         )?;
 
-        // Draw lives
+        //draw lives
         let lives_text = graphics::Text::new(format!("Lives: {}", self.lives));
         graphics::draw(
             ctx,
@@ -655,7 +675,7 @@ impl EventHandler<ggez::GameError> for MainState {
                 .color(Color::WHITE),
         )?;
 
-        // Draw game over text if applicable
+        //draw game over text if applicable
         if self.game_over {
             let game_over_text = graphics::Text::new("GAME OVER!");
             let text_dims = game_over_text.dimensions(ctx);
@@ -673,11 +693,11 @@ impl EventHandler<ggez::GameError> for MainState {
             )?;
         }
 
-        // Draw game over menu
+        //draw game over menu
         if self.show_menu {
             let (w, h) = graphics::drawable_size(ctx);
             
-            // Draw semi-transparent background
+            //draw semi-transparent background
             let background = graphics::Mesh::new_rectangle(
                 ctx,
                 graphics::DrawMode::fill(),
@@ -686,7 +706,7 @@ impl EventHandler<ggez::GameError> for MainState {
             )?;
             graphics::draw(ctx, &background, DrawParam::default())?;
 
-            // Draw menu box
+            //draw menu box
             let menu_width = 300.0;
             let menu_height = 200.0;
             let menu_x = (w - menu_width) / 2.0;
@@ -700,7 +720,7 @@ impl EventHandler<ggez::GameError> for MainState {
             )?;
             graphics::draw(ctx, &menu_bg, DrawParam::default())?;
 
-            // Draw game over text
+            //draw game over text
             let game_over_text = graphics::Text::new("GAME OVER!");
             let text_dims = game_over_text.dimensions(ctx);
             graphics::draw(
@@ -715,7 +735,7 @@ impl EventHandler<ggez::GameError> for MainState {
                     .scale([2.0, 2.0]),
             )?;
 
-            // Draw final score
+            //draw final score
             let score_text = graphics::Text::new(format!("Final Score: {}", self.score));
             let score_dims = score_text.dimensions(ctx);
             graphics::draw(
@@ -729,11 +749,11 @@ impl EventHandler<ggez::GameError> for MainState {
                     .color(Color::WHITE),
             )?;
 
-            // Draw buttons
+            //draw buttons
             let button_width = 120.0;
             let button_height = 40.0;
             
-            // Play Again button
+            //play Again button
             let play_button = graphics::Mesh::new_rectangle(
                 ctx,
                 graphics::DrawMode::fill(),
@@ -760,7 +780,7 @@ impl EventHandler<ggez::GameError> for MainState {
                     .color(Color::BLACK),
             )?;
 
-            // Exit button
+            //exit button
             let exit_button = graphics::Mesh::new_rectangle(
                 ctx,
                 graphics::DrawMode::fill(),
@@ -788,7 +808,7 @@ impl EventHandler<ggez::GameError> for MainState {
             )?;
         }
 
-        // Draw power pellets
+        //draw power pellets
         for pellet in &self.power_pellets {
             let pellet_mesh = graphics::Mesh::new_circle(
                 ctx,
@@ -822,7 +842,7 @@ impl EventHandler<ggez::GameError> for MainState {
             let button_width = 120.0;
             let button_height = 40.0;
 
-            // Check Play Again button
+            //check Play Again button
             if x >= menu_x + 30.0
                 && x <= menu_x + 30.0 + button_width
                 && y >= menu_y + 120.0
@@ -831,7 +851,7 @@ impl EventHandler<ggez::GameError> for MainState {
                 self.reset_game();
             }
 
-            // Check Exit button
+            //check Exit button
             if x >= menu_x + menu_width - button_width - 30.0
                 && x <= menu_x + menu_width - button_width - 30.0 + button_width
                 && y >= menu_y + 120.0
@@ -851,10 +871,10 @@ impl EventHandler<ggez::GameError> for MainState {
                 _ => self.requested_direction,
             };
 
-            // Update requested direction immediately
+            //update requested direction immediately
             self.requested_direction = new_direction;
 
-            // If we're at a grid center and the new direction is valid, change immediately
+            //if we're at a grid center and the new direction is valid, change immediately
             if self.is_at_grid_center() && self.can_move(new_direction) {
                 self.current_direction = new_direction;
             }
@@ -862,6 +882,7 @@ impl EventHandler<ggez::GameError> for MainState {
     }
 }
 
+//main function to call window setup and run event given context and state
 fn main() -> GameResult {
     let cb = ContextBuilder::new("pacman", "Your Name")
         .window_setup(ggez::conf::WindowSetup::default().title("Pac-Man"))
