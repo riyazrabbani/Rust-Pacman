@@ -6,6 +6,7 @@ use ggez::input::keyboard::{KeyCode, KeyMods};
 use ggez::timer;
 use std::time::Instant;
 use rand::Rng;
+use std::thread;
 
 //constants for sizes, movement speeds, and durations
 const CELL_SIZE: f32 = 30.0;
@@ -215,6 +216,7 @@ struct MainState {
     power_pellets: Vec<ggez::mint::Point2<f32>>,
     power_pellet_active: bool,
     power_pellet_timer: f32,
+    thread_count: usize,
 }
 
 impl MainState {
@@ -294,6 +296,7 @@ impl MainState {
             power_pellets,
             power_pellet_active: false,
             power_pellet_timer: 0.0,
+            thread_count: thread::available_parallelism().map_or(1, |p| p.get()),
         })
     }
     //reset game by enumerating over x and y and resetting particles
@@ -365,6 +368,7 @@ impl MainState {
                 }
             }
         }
+        self.thread_count = thread::available_parallelism().map_or(1, |p| p.get());
     }
 
     //possibility for movement depends on the cell grid they 'snap' to
@@ -672,6 +676,16 @@ impl EventHandler<ggez::GameError> for MainState {
             &lives_text,
             DrawParam::default()
                 .dest(ggez::mint::Point2 { x: 10.0, y: 30.0 })
+                .color(Color::WHITE),
+        )?;
+
+        //draw thread count
+        let thread_text = graphics::Text::new(format!("Threads: {}", self.thread_count));
+        graphics::draw(
+            ctx,
+            &thread_text,
+            DrawParam::default()
+                .dest(ggez::mint::Point2 { x: 10.0, y: 50.0 })
                 .color(Color::WHITE),
         )?;
 
